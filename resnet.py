@@ -298,6 +298,6 @@ if not os.path.exists('17.0_RESNET/models'):
     os.makedirs('17.0_RESNET/models')
 
 # Save both models
-torch.save(model.state_dict(), 'models/direct_identity_residual_block.pth')
-torch.save(model_resized.state_dict(), 'models/resized_residual_block.pth')
+torch.save(model.state_dict(), '17.0_RESNET/models/direct_identity_residual_block.pth')
+torch.save(model_resized.state_dict(), '17.0_RESNET/models/resized_residual_block.pth')
 print("Models saved in 'models' folder.")
