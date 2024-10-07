@@ -4,6 +4,8 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision import transforms
+import os
+import matplotlib.pyplot as plt
 
 ##########################
 ### SET-UP
@@ -14,8 +16,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
 random_seed = 123
-learning_rate = 0.01
-num_epochs = 10
+learning_rate = 0.005
+num_epochs = 20
 batch_size = 128
 
 # Architecture
@@ -23,28 +25,20 @@ num_classes = 10
 
 
 ##########################
-### MNIST DATASET
+### CIFAR-10 DATASET
 ##########################
 
-# Note transforms.ToTensor() scales input images
-# to 0-1 range
-train_dataset = datasets.MNIST(root='data', 
-                               train=True, 
-                               transform=transforms.ToTensor(),
-                               download=True)
+# Transformations
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize for RGB
+])
 
-test_dataset = datasets.MNIST(root='data', 
-                              train=False, 
-                              transform=transforms.ToTensor())
+train_dataset = datasets.CIFAR10(root='data', train=True, transform=transform, download=True)
+test_dataset = datasets.CIFAR10(root='data', train=False, transform=transform)
 
-
-train_loader = DataLoader(dataset=train_dataset, 
-                          batch_size=batch_size, 
-                          shuffle=True)
-
-test_loader = DataLoader(dataset=test_dataset, 
-                         batch_size=batch_size, 
-                         shuffle=False)
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
 
 # Checking the dataset
 for images, labels in train_loader:  
@@ -58,9 +52,7 @@ for images, labels in train_loader:
 ### MODEL
 ##########################
 
-
 class ConvNet(torch.nn.Module):
-
     def __init__(self, num_classes):
         super(ConvNet, self).__init__()
         
@@ -69,45 +61,28 @@ class ConvNet(torch.nn.Module):
         #########################
         
         self.block_1 = torch.nn.Sequential(
-                torch.nn.Conv2d(in_channels=1,
-                                out_channels=4,
-                                kernel_size=(1, 1),
-                                stride=(1, 1),
-                                padding=0),
-                torch.nn.BatchNorm2d(4),
-                torch.nn.ReLU(inplace=True),
-                torch.nn.Conv2d(in_channels=4,
-                                out_channels=1,
+                torch.nn.Conv2d(in_channels=3,
+                                out_channels=16,
                                 kernel_size=(3, 3),
                                 stride=(1, 1),
                                 padding=1),
-                torch.nn.BatchNorm2d(1)
+                torch.nn.BatchNorm2d(16),
+                torch.nn.ReLU(inplace=True),
+                torch.nn.Conv2d(in_channels=16,
+                                out_channels=3,
+                                kernel_size=(3, 3),
+                                stride=(1, 1),
+                                padding=1),
+                torch.nn.BatchNorm2d(3)
         )
         
-        self.block_2 = torch.nn.Sequential(
-                torch.nn.Conv2d(in_channels=1,
-                                out_channels=4,
-                                kernel_size=(1, 1),
-                                stride=(1, 1),
-                                padding=0),
-                torch.nn.BatchNorm2d(4),
-                torch.nn.ReLU(inplace=True),
-                torch.nn.Conv2d(in_channels=4,
-                                out_channels=1,
-                                kernel_size=(3, 3),
-                                stride=(1, 1),
-                                padding=1),
-                torch.nn.BatchNorm2d(1)
-        )
-
         #########################
         ### Fully connected
         #########################        
-        self.linear_1 = torch.nn.Linear(1*28*28, num_classes)
+        self.linear_1 = torch.nn.Linear(3 * 32 * 32, num_classes)
 
         
     def forward(self, x):
-        
         #########################
         ### 1st residual block
         #########################
@@ -116,16 +91,9 @@ class ConvNet(torch.nn.Module):
         x = torch.nn.functional.relu(x + shortcut)
         
         #########################
-        ### 2nd residual block
-        #########################
-        shortcut = x
-        x = self.block_2(x)
-        x = torch.nn.functional.relu(x + shortcut)
-        
-        #########################
         ### Fully connected
         #########################
-        logits = self.linear_1(x.view(-1,  1*28*28))
+        logits = self.linear_1(x.view(-1, 3 * 32 * 32))
         return logits
 
     
@@ -172,8 +140,8 @@ for epoch in range(num_epochs):
                    %(epoch+1, num_epochs, batch_idx, 
                      len(train_loader), cost))
 
-    model = model.eval() # eval mode to prevent upd. batchnorm params during inference
-    with torch.set_grad_enabled(False): # save memory during inference
+    model = model.eval()  # eval mode to prevent updating batchnorm params during inference
+    with torch.set_grad_enabled(False):  # save memory during inference
         print('Epoch: %03d/%03d training accuracy: %.2f%%' % (
               epoch+1, num_epochs, 
               compute_accuracy(model, train_loader)))
@@ -185,13 +153,13 @@ print('Total Training Time: %.2f min' % ((time.time() - start_time)/60))
 # TEST
 print('Test accuracy: %.2f%%' % (compute_accuracy(model, test_loader)))
 
+
 ##############################
 # 2. Resized Residual Block
 class ResidualBlock(torch.nn.Module):
     """ Helper Class"""
 
     def __init__(self, channels):
-        
         super(ResidualBlock, self).__init__()
         
         self.block = torch.nn.Sequential(
@@ -220,11 +188,9 @@ class ResidualBlock(torch.nn.Module):
         )
             
     def forward(self, x):
-        shortcut = x
-        
+        shortcut = self.shortcut(x)  # Resizing the shortcut
         block = self.block(x)
-        shortcut = self.shortcut(x)    
-        x = torch.nn.functional.relu(block+shortcut)
+        x = torch.nn.functional.relu(block + shortcut)
 
         return x
     
@@ -232,43 +198,39 @@ class ResidualBlock(torch.nn.Module):
 ### MODEL
 ##########################
 
-
-
-class ConvNet(torch.nn.Module):
-
+class ResNetCIFAR(torch.nn.Module):
     def __init__(self, num_classes):
-        super(ConvNet, self).__init__()
+        super(ResNetCIFAR, self).__init__()
         
-        self.residual_block_1 = ResidualBlock(channels=[1, 4, 8])
-        self.residual_block_2 = ResidualBlock(channels=[8, 16, 32])
+        self.residual_block_1 = ResidualBlock(channels=[3, 16, 32])
+        self.residual_block_2 = ResidualBlock(channels=[32, 64, 128])
     
-        self.linear_1 = torch.nn.Linear(7*7*32, num_classes)
+        self.linear_1 = torch.nn.Linear(8 * 8 * 128, num_classes)
 
         
     def forward(self, x):
-
         out = self.residual_block_1(x)
         out = self.residual_block_2(out)
          
-        logits = self.linear_1(out.view(-1, 7*7*32))
+        logits = self.linear_1(out.view(-1, 8 * 8 * 128))
         return logits
 
     
 torch.manual_seed(random_seed)
-model = ConvNet(num_classes=num_classes)
+model_resized = ResNetCIFAR(num_classes=num_classes)
+model_resized = model_resized.to(device)
 
-model.to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)  
+optimizer = torch.optim.Adam(model_resized.parameters(), lr=learning_rate)  
 
 for epoch in range(num_epochs):
-    model = model.train()
+    model_resized = model_resized.train()
     for batch_idx, (features, targets) in enumerate(train_loader):
         
         features = features.to(device)
         targets = targets.to(device)
             
         ### FORWARD AND BACK PROP
-        logits = model(features)
+        logits = model_resized(features)
         cost = torch.nn.functional.cross_entropy(logits, targets)
         optimizer.zero_grad()
         
@@ -283,10 +245,59 @@ for epoch in range(num_epochs):
                    %(epoch+1, num_epochs, batch_idx, 
                      len(train_dataset)//batch_size, cost))
 
-    model = model.eval() # eval mode to prevent upd. batchnorm params during inference
-    with torch.set_grad_enabled(False): # save memory during inference
+    model_resized = model_resized.eval()  # eval mode to prevent updating batchnorm params during inference
+    with torch.set_grad_enabled(False):  # save memory during inference
         print('Epoch: %03d/%03d training accuracy: %.2f%%' % (
               epoch+1, num_epochs, 
-              compute_accuracy(model, train_loader)))
+              compute_accuracy(model_resized, train_loader)))
         
-print('Test accuracy: %.2f%%' % (compute_accuracy(model, test_loader)))
+print('Test accuracy: %.2f%%' % (compute_accuracy(model_resized, test_loader)))
+
+
+
+
+
+
+# Function to visualize predictions
+def visualize_predictions(model, data_loader, num_images=5):
+    model.eval()
+    images, labels = next(iter(data_loader))
+    images = images.to(device)
+    labels = labels.to(device)
+
+    with torch.no_grad():
+        outputs = model(images)
+        _, predicted = torch.max(outputs, 1)
+
+    # Move data to CPU and convert to NumPy for visualization
+    images = images.cpu().numpy()
+    predicted = predicted.cpu().numpy()
+    labels = labels.cpu().numpy()
+
+    # Plot images and predictions
+    plt.figure(figsize=(12, 6))
+    for i in range(num_images):
+        plt.subplot(2, num_images, i + 1)
+        plt.imshow(np.transpose(images[i], (1, 2, 0)) * 0.5 + 0.5)  # Unnormalize
+        plt.title(f"Pred: {predicted[i]}\nTrue: {labels[i]}")
+        plt.axis('off')
+    
+    plt.show()
+
+
+# Visualize predictions for Direct Identity Residual Block
+print("Visualizing predictions for Direct Identity Residual Block:")
+visualize_predictions(model, test_loader)
+
+# Visualize predictions for Resized Residual Block
+print("Visualizing predictions for Resized Residual Block:")
+visualize_predictions(model_resized, test_loader)
+
+# Create models directory if it doesn't exist
+if not os.path.exists('17.0_RESNET/models'):
+    os.makedirs('17.0_RESNET/models')
+
+# Save both models
+torch.save(model.state_dict(), 'models/direct_identity_residual_block.pth')
+torch.save(model_resized.state_dict(), 'models/resized_residual_block.pth')
+print("Models saved in 'models' folder.")
