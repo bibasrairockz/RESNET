@@ -28,7 +28,7 @@ To run the code in this repository, follow these steps:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/resnet.git
+   git clone https://github.com/bibasrairockz/RESNET.git
    cd resnet
   ```
 
