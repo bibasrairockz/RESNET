@@ -30,5 +30,4 @@ To run the code in this repository, follow these steps:
    ```bash
    git clone https://github.com/bibasrairockz/RESNET.git
    cd resnet
-  ```
-
+  
